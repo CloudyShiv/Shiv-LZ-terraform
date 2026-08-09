@@ -17,11 +17,11 @@ jobs:
     name: Terraform Validation
     runs-on: ubuntu-latest
 
-    defaults:
+        defaults:
       run:
         working-directory: Environment/asset-dev
 
-        steps:
+           steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
