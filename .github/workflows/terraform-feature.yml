@@ -22,7 +22,6 @@ jobs:
         working-directory: Environment/asset-dev
 
     steps:
-
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -37,11 +36,11 @@ jobs:
 
       - name: Terraform Validate
         run: terraform validate
-        
-           - name: Setup TFLint
+
+      - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
 
       - name: Run TFLint
         run: |
           tflint --init
-          tflint   
+          tflint
