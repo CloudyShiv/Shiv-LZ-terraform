@@ -4,5 +4,5 @@ resource_groups = {
     location   = "westus"
     managed_by = "terraform"
   }
-  
+
 }
