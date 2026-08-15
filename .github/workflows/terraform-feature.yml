@@ -7,14 +7,14 @@ on:
 
   pull_request:
     branches:
-      - main
+      - feature/terraform-ci
 
-permissions:
-  contents: read
-  security-events: write
+  workflow_dispatch:
 
 jobs:
+
   terraform-check:
+
     name: Terraform Validation
     runs-on: ubuntu-latest
 
@@ -22,55 +22,101 @@ jobs:
       run:
         working-directory: Environment/asset-dev
 
+    permissions:
+      contents: read
+      security-events: write
+
     steps:
 
+      # -----------------------------------------
       # 1. Checkout Code
+      # -----------------------------------------
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+
+      # -----------------------------------------
       # 2. Setup Terraform
+      # -----------------------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+
+      # -----------------------------------------
       # 3. Terraform Format Check
+      # -----------------------------------------
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
+
+      # -----------------------------------------
       # 4. Terraform Init
+      # -----------------------------------------
       - name: Terraform Init
         run: terraform init -backend=false
 
+
+      # -----------------------------------------
       # 5. Terraform Validate
+      # -----------------------------------------
       - name: Terraform Validate
         run: terraform validate
 
+
+      # -----------------------------------------
       # 6. Setup TFLint
+      # -----------------------------------------
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
 
+
+      # -----------------------------------------
       # 7. Run TFLint
+      # -----------------------------------------
       - name: Run TFLint
         run: |
           tflint --init
           tflint
 
-      # 8. Run tfsec
+
+      # -----------------------------------------
+      # 8. Run TFSEC
+      # -----------------------------------------
       - name: Run tfsec
         uses: aquasecurity/tfsec-action@v1.0.3
         with:
           working_directory: Environment/asset-dev
 
+
+      # -----------------------------------------
       # 9. Run Checkov
+      # -----------------------------------------
       - name: Run Checkov
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: Environment/asset-dev
           framework: terraform
 
+
+      # -----------------------------------------
       # 10. Run GitLeaks
+      # -----------------------------------------
       - name: Run GitLeaks
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
+
+      # -----------------------------------------
+      # 11. Upload Terraform files
+      # -----------------------------------------
+      - name: Upload Terraform validation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-validation
+          path: |
+            Environment/asset-dev/*.tf
+            Environment/asset-dev/.terraform.lock.hcl
