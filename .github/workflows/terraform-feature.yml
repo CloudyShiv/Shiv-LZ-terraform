@@ -9,7 +9,10 @@ on:
     branches:
       - feature/terraform-ci
 
-  workflow_dispatch:
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
 
 jobs:
 
@@ -21,156 +24,134 @@ jobs:
       run:
         working-directory: Environment/asset-dev
 
-    permissions:
-      contents: read
-      security-events: write
-
     steps:
 
-      # =========================================
-      # 1. CHECKOUT CODE
-      # =========================================
-
+      # --------------------------------------------------
+      # 1. Checkout
+      # --------------------------------------------------
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
 
-      # =========================================
-      # 2. SETUP TERRAFORM
-      # =========================================
-
+      # --------------------------------------------------
+      # 2. Setup Terraform
+      # --------------------------------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
 
 
-      # =========================================
-      # 3. TERRAFORM FORMAT CHECK
-      # =========================================
-
+      # --------------------------------------------------
+      # 3. Terraform Format Check
+      # --------------------------------------------------
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
 
-      # =========================================
-      # 4. TERRAFORM INIT
-      # =========================================
-
+      # --------------------------------------------------
+      # 4. Terraform Init
+      # --------------------------------------------------
       - name: Terraform Init
         run: terraform init -backend=false
 
 
-      # =========================================
-      # 5. TERRAFORM VALIDATE
-      # =========================================
-
+      # --------------------------------------------------
+      # 5. Terraform Validate
+      # --------------------------------------------------
       - name: Terraform Validate
         run: terraform validate
 
 
-      # =========================================
-      # 6. SETUP TFLINT
-      # =========================================
-
+      # --------------------------------------------------
+      # 6. Setup TFLint
+      # --------------------------------------------------
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
 
 
-      # =========================================
-      # 7. RUN TFLINT
-      # =========================================
-
+      # --------------------------------------------------
+      # 7. Run TFLint
+      # --------------------------------------------------
       - name: Run TFLint
         run: |
           tflint --init
           tflint
 
 
-      # =========================================
-      # 8. RUN TFSEC
-      # =========================================
-
+      # --------------------------------------------------
+      # 8. Run tfsec
+      # --------------------------------------------------
       - name: Run tfsec
         uses: aquasecurity/tfsec-action@v1.0.3
         with:
           working_directory: Environment/asset-dev
 
 
-      # =========================================
-      # 9. RUN CHECKOV
-      # =========================================
-
+      # --------------------------------------------------
+      # 9. Run Checkov
+      # --------------------------------------------------
       - name: Run Checkov
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: Environment/asset-dev
           framework: terraform
+          quiet: true
 
 
-      # =========================================
-      # 10. INSTALL GITLEAKS
-      # =========================================
-
-      - name: Install GitLeaks
-        working-directory: ${{ github.workspace }}
-        run: |
-          curl -sSfL \
-            https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \
-            -o /tmp/gitleaks.tar.gz
-
-          tar -xzf /tmp/gitleaks.tar.gz -C /tmp
-
-          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
-
-          gitleaks version
-
-
-      # =========================================
-      # 11. RUN GITLEAKS SECRET SCAN
-      # =========================================
-
+      # --------------------------------------------------
+      # 10. Run Gitleaks
+      # --------------------------------------------------
       - name: Run GitLeaks
-        working-directory: ${{ github.workspace }}
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+      # --------------------------------------------------
+      # 11. Setup Infracost
+      # --------------------------------------------------
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+
+      # --------------------------------------------------
+      # 12. Infracost Breakdown
+      # --------------------------------------------------
+      - name: Run Infracost
         run: |
-          echo "========================================="
-          echo "Running GitLeaks Secret Scan"
-          echo "========================================="
-
-          gitleaks detect \
-            --redact \
-            --verbose \
-            --exit-code=1 \
-            --report-format=sarif \
-            --report-path="$RUNNER_TEMP/gitleaks-results.sarif"
-
-          echo "========================================="
-          echo "GitLeaks scan completed successfully"
-          echo "========================================="
+          infracost breakdown \
+            --path=. \
+            --format=json \
+            --out-file=/tmp/infracost.json
 
 
-      # =========================================
-      # 12. UPLOAD GITLEAKS REPORT
-      # =========================================
+      # --------------------------------------------------
+      # 13. Display Cost
+      # --------------------------------------------------
+      - name: Display Infracost
+        run: |
+          infracost output \
+            --path=/tmp/infracost.json \
+            --format=table
 
-      - name: Upload GitLeaks Report
-        if: always()
+
+      # --------------------------------------------------
+      # 14. Terraform Plan
+      # --------------------------------------------------
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -out=tfplan
+
+
+      # --------------------------------------------------
+      # 15. Save Terraform Plan
+      # --------------------------------------------------
+      - name: Upload Terraform Plan
         uses: actions/upload-artifact@v4
         with:
-          name: gitleaks-results
-          path: ${{ runner.temp }}/gitleaks-results.sarif
-          if-no-files-found: warn
-
-
-      # =========================================
-      # 13. UPLOAD TERRAFORM FILES
-      # =========================================
-
-      - name: Upload Terraform Files
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-files
-          path: |
-            Environment/asset-dev/*.tf
-            Environment/asset-dev/.terraform.lock.hcl
+          name: terraform-plan
+          path: Environment/asset-dev/tfplan
