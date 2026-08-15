@@ -9,6 +9,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   terraform-check:
     name: Terraform Validation
@@ -20,9 +24,11 @@ jobs:
 
     steps:
 
-      # 1. Checkout source code
+      # 1. Checkout Code
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       # 2. Setup Terraform
       - name: Setup Terraform
@@ -65,6 +71,6 @@ jobs:
 
       # 10. Run GitLeaks
       - name: Run GitLeaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
