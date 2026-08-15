@@ -26,71 +26,71 @@ jobs:
 
     steps:
 
-      # --------------------------------------------------
-      # 1. Checkout
-      # --------------------------------------------------
+      # ==================================================
+      # 1. Checkout Code
+      # ==================================================
       - name: Checkout Code
         uses: actions/checkout@v4
 
 
-      # --------------------------------------------------
+      # ==================================================
       # 2. Setup Terraform
-      # --------------------------------------------------
+      # ==================================================
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.8
 
 
-      # --------------------------------------------------
+      # ==================================================
       # 3. Terraform Format Check
-      # --------------------------------------------------
+      # ==================================================
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
 
-      # --------------------------------------------------
+      # ==================================================
       # 4. Terraform Init
-      # --------------------------------------------------
+      # ==================================================
       - name: Terraform Init
         run: terraform init -backend=false
 
 
-      # --------------------------------------------------
+      # ==================================================
       # 5. Terraform Validate
-      # --------------------------------------------------
+      # ==================================================
       - name: Terraform Validate
         run: terraform validate
 
 
-      # --------------------------------------------------
+      # ==================================================
       # 6. Setup TFLint
-      # --------------------------------------------------
+      # ==================================================
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
 
 
-      # --------------------------------------------------
+      # ==================================================
       # 7. Run TFLint
-      # --------------------------------------------------
+      # ==================================================
       - name: Run TFLint
         run: |
           tflint --init
           tflint
 
 
-      # --------------------------------------------------
+      # ==================================================
       # 8. Run tfsec
-      # --------------------------------------------------
+      # ==================================================
       - name: Run tfsec
         uses: aquasecurity/tfsec-action@v1.0.3
         with:
           working_directory: Environment/asset-dev
 
 
-      # --------------------------------------------------
+      # ==================================================
       # 9. Run Checkov
-      # --------------------------------------------------
+      # ==================================================
       - name: Run Checkov
         uses: bridgecrewio/checkov-action@v12
         with:
@@ -99,27 +99,64 @@ jobs:
           quiet: true
 
 
-      # --------------------------------------------------
-      # 10. Run Gitleaks
-      # --------------------------------------------------
+      # ==================================================
+      # 10. Run GitLeaks
+      # ==================================================
+      # We don't use gitleaks-action here because it was
+      # failing while creating results.sarif.
+      # The report is written to RUNNER_TEMP instead.
+      # ==================================================
       - name: Run GitLeaks
-        uses: gitleaks/gitleaks-action@v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: .
+        shell: bash
+        run: |
+          GITLEAKS_VERSION="8.24.3"
+
+          echo "Downloading Gitleaks ${GITLEAKS_VERSION}..."
+
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            -o /tmp/gitleaks.tar.gz
+
+          echo "Extracting Gitleaks..."
+
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp
+
+          echo "Running Gitleaks..."
+
+          /tmp/gitleaks detect \
+            --source . \
+            --redact \
+            --verbose \
+            --exit-code 2 \
+            --report-format sarif \
+            --report-path "$RUNNER_TEMP/gitleaks-results.sarif"
 
 
-      # --------------------------------------------------
-      # 11. Setup Infracost
-      # --------------------------------------------------
+      # ==================================================
+      # 11. Upload GitLeaks Report
+      # ==================================================
+      - name: Upload GitLeaks Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-results
+          path: ${{ runner.temp }}/gitleaks-results.sarif
+          if-no-files-found: warn
+
+
+      # ==================================================
+      # 12. Setup Infracost
+      # ==================================================
       - name: Setup Infracost
         uses: infracost/actions/setup@v3
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
 
-      # --------------------------------------------------
-      # 12. Infracost Breakdown
-      # --------------------------------------------------
+      # ==================================================
+      # 13. Run Infracost
+      # ==================================================
       - name: Run Infracost
         run: |
           infracost breakdown \
@@ -128,9 +165,9 @@ jobs:
             --out-file=/tmp/infracost.json
 
 
-      # --------------------------------------------------
-      # 13. Display Cost
-      # --------------------------------------------------
+      # ==================================================
+      # 14. Display Infracost
+      # ==================================================
       - name: Display Infracost
         run: |
           infracost output \
@@ -138,20 +175,22 @@ jobs:
             --format=table
 
 
-      # --------------------------------------------------
-      # 14. Terraform Plan
-      # --------------------------------------------------
+      # ==================================================
+      # 15. Terraform Plan
+      # ==================================================
       - name: Terraform Plan
         run: |
           terraform plan \
             -out=tfplan
 
 
-      # --------------------------------------------------
-      # 15. Save Terraform Plan
-      # --------------------------------------------------
+      # ==================================================
+      # 16. Upload Terraform Plan
+      # ==================================================
       - name: Upload Terraform Plan
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan
           path: Environment/asset-dev/tfplan
+          if-no-files-found: warn
